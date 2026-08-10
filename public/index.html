@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes Dashboard — Email Automation</title>
+  <meta name="description" content="Hermes Dashboard automates email scheduling from Google Calendar events. Manage pending, scheduled, canceled, and sent emails with customizable templates and signatures.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SIDEBAR                                     -->
+  <!-- ═══════════════════════════════════════════ -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-text">Hermes</span>
+    </div>
+
+    <button id="force-sync-btn" class="btn btn-primary sidebar-sync-btn">
+      <span class="btn-icon">🔄</span>
+      Force Sync
+    </button>
+
+    <nav class="sidebar-nav">
+      <a class="nav-item active" data-tab="pending">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">Pending</span>
+      </a>
+      <a class="nav-item" data-tab="scheduled">
+        <span class="nav-icon">📅</span>
+        <span class="nav-label">Scheduled</span>
+      </a>
+      <a class="nav-item" data-tab="past">
+        <span class="nav-icon">⏳</span>
+        <span class="nav-label">Past Events</span>
+      </a>
+      <a class="nav-item" data-tab="canceled">
+        <span class="nav-icon">❌</span>
+        <span class="nav-label">Canceled</span>
+        <span id="canceled-badge" class="badge">0</span>
+      </a>
+      <a class="nav-item" data-tab="sent">
+        <span class="nav-icon">✅</span>
+        <span class="nav-label">Sent</span>
+      </a>
+      <a class="nav-item" data-tab="settings">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">Settings</span>
+      </a>
+    </nav>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- MAIN CONTENT                                -->
+  <!-- ═══════════════════════════════════════════ -->
+  <main class="main-content">
+
+    <!-- Header -->
+    <header class="content-header">
+      <h1 id="header-title">Pending Events</h1>
+    </header>
+
+    <!-- Auth Banner (shown when not authenticated) -->
+    <div id="auth-banner" class="auth-banner" hidden>
+      <div class="auth-banner-content">
+        <span class="auth-banner-icon">🔐</span>
+        <div class="auth-banner-text">
+          <strong>Google Account not connected</strong>
+          <p>Connect your Google account to sync calendar events and send emails.</p>
+        </div>
+        <a href="/auth/google" class="btn btn-primary auth-connect-btn">Connect Google Account</a>
+      </div>
+    </div>
+
+    <!-- Auth Status (shown when authenticated) -->
+    <div id="auth-status" class="auth-status" hidden>
+      <span>✅ Connected as <strong id="auth-email"></strong></span>
+    </div>
+
+    <!-- ─── Pending Tab ─── -->
+    <section id="pending-content" class="tab-content active">
+      <div class="tab-toolbar">
+        <input
+          type="text"
+          id="pending-search"
+          class="search-input"
+          placeholder="Search by name or event..."
+        >
+        <div class="toolbar-controls">
+          <label class="checkbox-label">
+            <input type="checkbox" id="day-filter-toggle" class="checkbox-input">
+            <span>Filter by days</span>
+          </label>
+          <select id="day-filter-select" class="select-input">
+            <option value="1">1 day</option>
+            <option value="2" selected>2 days</option>
+            <option value="3">3 days</option>
+            <option value="5">5 days</option>
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30">30 days</option>
+          </select>
+        </div>
+      </div>
+      <div id="pending-events" class="event-list"></div>
+    </section>
+
+    <!-- ─── Scheduled Tab ─── -->
+    <section id="scheduled-content" class="tab-content">
+      <div class="tab-toolbar">
+        <input
+          type="text"
+          id="scheduled-search"
+          class="search-input"
+          placeholder="Search scheduled events..."
+        >
+      </div>
+      <div id="scheduled-events" class="event-list"></div>
+    </section>
+
+    <!-- ─── Past Events Tab ─── -->
+    <section id="past-content" class="tab-content">
+      <div class="tab-toolbar">
+        <input
+          type="text"
+          id="past-search"
+          class="search-input"
+          placeholder="Search past events..."
+        >
+      </div>
+      <div id="past-events" class="event-list"></div>
+    </section>
+
+    <!-- ─── Canceled Tab ─── -->
+    <section id="canceled-content" class="tab-content">
+      <div class="tab-toolbar">
+        <input
+          type="text"
+          id="canceled-search"
+          class="search-input"
+          placeholder="Search canceled events..."
+        >
+      </div>
+      <div id="canceled-events" class="event-list"></div>
+    </section>
+
+    <!-- ─── Sent Tab ─── -->
+    <section id="sent-content" class="tab-content">
+      <div class="tab-toolbar">
+        <input
+          type="text"
+          id="sent-search"
+          class="search-input"
+          placeholder="Search sent events..."
+        >
+      </div>
+      <div id="sent-events" class="event-list"></div>
+    </section>
+
+    <!-- ─── Settings Tab ─── -->
+    <section id="settings-content" class="tab-content">
+
+      <div class="settings-grid">
+
+        <!-- ── Templates Section ── -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <h2>Email Templates</h2>
+            <button id="template-new-btn" class="btn btn-sm btn-primary">+ New Template</button>
+          </div>
+
+          <div class="settings-card-body">
+            <label class="field-label" for="active-template-select">Active Template</label>
+            <select id="active-template-select" class="select-input"></select>
+
+            <div id="template-list" class="item-list"></div>
+
+            <div class="editor-form">
+              <label class="field-label" for="template-name">Template Name</label>
+              <input type="text" id="template-name" class="text-input" placeholder="e.g. Reminder Email">
+
+              <label class="field-label" for="template-subject">Email Subject</label>
+              <input type="text" id="template-subject" class="text-input" placeholder="e.g. Reminder: {{event_name}} on {{event_day}}">
+
+              <label class="field-label">Email Body</label>
+              <div id="template-toolbar" class="rich-toolbar">
+                <button type="button" class="toolbar-btn" data-command="bold" title="Bold"><strong>B</strong></button>
+                <button type="button" class="toolbar-btn" data-command="italic" title="Italic"><em>I</em></button>
+                <button type="button" class="toolbar-btn" data-command="underline" title="Underline"><u>U</u></button>
+                <button type="button" class="toolbar-btn" data-command="createLink" title="Insert Link">🔗</button>
+                <select class="toolbar-select" data-command="fontSize" title="Font Size">
+                  <option value="">Size</option>
+                  <option value="1">12px</option>
+                  <option value="2">14px</option>
+                  <option value="3">16px</option>
+                  <option value="4">18px</option>
+                  <option value="5">20px</option>
+                  <option value="6">22px</option>
+                  <option value="7">24px</option>
+                </select>
+                <input type="color" class="toolbar-color" data-command="foreColor" title="Text Color" value="#ffffff">
+              </div>
+              <div
+                id="template-body"
+                class="signature-editor"
+                contenteditable="true"
+                data-placeholder="Write your email template here..."
+              ></div>
+
+              <div class="placeholder-guide">
+                <h4>Available Placeholders</h4>
+                <ul>
+                  <li><code>{{first_name}}</code> — Participant's first name</li>
+                  <li><code>{{last_name}}</code> — Participant's last name</li>
+                  <li><code>{{event_name}}</code> — Calendar event title</li>
+                  <li><code>{{event_day}}</code> — Day of the event</li>
+                  <li><code>{{week_day}}</code> — Day of the week</li>
+                  <li><code>{{event_month}}</code> — Month of the event</li>
+                  <li><code>{{event_time}}</code> — Time of the event</li>
+                </ul>
+              </div>
+
+              <div class="editor-actions">
+                <button id="template-save-btn" class="btn btn-primary">Save Template</button>
+                <button id="template-delete-btn" class="btn btn-danger">Delete Template</button>
+              </div>
+            </div>
+
+            <div class="preview-section">
+              <h4>Live Preview</h4>
+              <div id="template-preview" class="preview-container"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Signatures Section ── -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <h2>Email Signatures</h2>
+            <button id="signature-new-btn" class="btn btn-sm btn-primary">+ New Signature</button>
+          </div>
+
+          <div class="settings-card-body">
+            <label class="field-label" for="active-signature-select">Active Signature</label>
+            <select id="active-signature-select" class="select-input"></select>
+
+            <div id="signature-list" class="item-list"></div>
+
+            <div class="editor-form">
+              <label class="field-label" for="signature-name">Signature Name</label>
+              <input type="text" id="signature-name" class="text-input" placeholder="e.g. Professional">
+
+              <label class="field-label">Formatting</label>
+              <div id="signature-toolbar" class="rich-toolbar">
+                <button type="button" class="toolbar-btn" data-command="bold" title="Bold"><strong>B</strong></button>
+                <button type="button" class="toolbar-btn" data-command="italic" title="Italic"><em>I</em></button>
+                <button type="button" class="toolbar-btn" data-command="underline" title="Underline"><u>U</u></button>
+                <button type="button" class="toolbar-btn" data-command="createLink" title="Insert Link">🔗</button>
+                <select class="toolbar-select" data-command="fontSize" title="Font Size">
+                  <option value="">Size</option>
+                  <option value="1">12px</option>
+                  <option value="2">14px</option>
+                  <option value="3">16px</option>
+                  <option value="4">18px</option>
+                  <option value="5">20px</option>
+                  <option value="6">22px</option>
+                  <option value="7">24px</option>
+                </select>
+                <input type="color" class="toolbar-color" data-command="foreColor" title="Text Color" value="#ffffff">
+                <button type="button" class="toolbar-btn" data-command="insertImage" title="Insert Image">🖼️</button>
+              </div>
+
+              <div
+                id="signature-editor"
+                class="signature-editor"
+                contenteditable="true"
+              ></div>
+
+              <div class="editor-actions">
+                <button id="signature-save-btn" class="btn btn-primary">Save Signature</button>
+                <button id="signature-delete-btn" class="btn btn-danger">Delete Signature</button>
+              </div>
+            </div>
+
+            <div class="preview-section">
+              <h4>Live Preview</h4>
+              <div id="signature-preview" class="preview-container"></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /settings-grid -->
+
+      <!-- ── Scheduling Section ── -->
+      <div class="settings-card settings-card-compact">
+        <div class="settings-card-header">
+          <h2>Scheduling</h2>
+        </div>
+
+        <div class="settings-card-body">
+          <label class="field-label" for="send-hour-select">Global send hour for scheduled emails</label>
+          <p class="settings-hint">Scheduled emails are sent 2 days before the event, at this hour.</p>
+          <div class="settings-row">
+            <select id="send-hour-select" class="select-input"></select>
+            <button id="send-hour-save-btn" class="btn btn-sm btn-primary">Save</button>
+          </div>
+          <p id="send-hour-status" class="settings-status" hidden></p>
+        </div>
+      </div>
+
+      <!-- ── Setup Guide ── -->
+      <div id="setup-guide" class="setup-guide-section">
+        <button id="setup-guide-toggle" class="setup-guide-toggle">
+          <span class="toggle-icon">▶</span>
+          <span>Setup Guide — Google Apps Script Integration</span>
+        </button>
+
+        <div id="setup-guide-content" class="setup-guide-content" hidden>
+          <div class="setup-steps">
+            <h3>How to automate email sending with Google Apps Script</h3>
+            <ol>
+              <li>Open the <strong>Google Sheet</strong> you configured in your <code>.env</code> file (GOOGLE_SHEET_ID).</li>
+              <li>Go to <strong>Extensions → Apps Script</strong> in the Sheet's menu bar.</li>
+              <li>Delete any existing code and paste the function below.</li>
+              <li>Click <strong>Save</strong> (💾), then click <strong>Run</strong> to authorize the script (grant Gmail and Sheets permissions when prompted).</li>
+              <li>Go to <strong>Triggers</strong> (⏰ clock icon in the left sidebar) → click <strong>+ Add Trigger</strong>.</li>
+              <li>Set: Function = <code>processScheduledEmails</code>, Event source = <strong>Time-driven</strong>, Type = <strong>Minutes timer</strong>, Interval = <strong>Every 1 minute</strong>.</li>
+              <li>Click <strong>Save</strong>. The script will now check for due emails every minute and send them automatically — even when your PC is off!</li>
+            </ol>
+          </div>
+
+          <div class="code-block-wrapper">
+            <div class="code-block-header">
+              <span>Apps Script — processScheduledEmails</span>
+              <button id="copy-script-btn" class="btn btn-sm btn-ghost">📋 Copy</button>
+            </div>
+            <pre class="code-block"><code>function processScheduledEmails() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  var now = new Date();
+
+  for (var i = 1; i &lt; data.length; i++) {  // Skip header row
+    var eventId  = data[i][0];  // Column A: event_id
+    var toEmail  = data[i][1];  // Column B: to_email
+    var subject  = data[i][2];  // Column C: subject
+    var body     = data[i][3];  // Column D: body (HTML)
+    var sendAt   = new Date(data[i][4]);  // Column E: send_at
+    var status   = data[i][5];  // Column F: status
+
+    if (status === 'scheduled' &amp;&amp; sendAt &lt;= now) {
+      try {
+        GmailApp.sendEmail(toEmail, subject, '', { htmlBody: body });
+        sheet.getRange(i + 1, 6).setValue('sent');
+        sheet.getRange(i + 1, 7).setValue(now.toISOString());
+        Logger.log('Sent email to ' + toEmail + ' for event: ' + eventId);
+      } catch (e) {
+        sheet.getRange(i + 1, 6).setValue('error: ' + e.message);
+        Logger.log('Failed for event ' + eventId + ': ' + e.message);
+      }
+    }
+  }
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Danger Zone ── -->
+      <div class="danger-zone">
+        <h3>Danger Zone</h3>
+        <p>This will permanently reset all data including events, templates, and signatures.</p>
+        <button id="reset-btn" class="btn btn-danger">Reset All Data</button>
+      </div>
+
+    </section><!-- /settings-content -->
+
+  </main><!-- /main-content -->
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- EVENT DETAIL MODAL                          -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div id="event-modal" class="modal-overlay" hidden>
+    <div id="event-modal-card" class="modal-card">
+
+      <div class="modal-header">
+        <h2>Event Details</h2>
+        <button id="modal-close-btn" class="modal-close-btn" title="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Past cutoff alert -->
+        <div id="modal-past-cutoff-alert" class="alert alert-warning" hidden>
+          ⚠️ This event is past the scheduling cutoff. The email can only be sent immediately.
+        </div>
+
+        <!-- Event fields (two-column grid) -->
+        <div class="modal-form-grid">
+          <div class="form-group">
+            <label class="field-label" for="modal-event-name">Event Name</label>
+            <input type="text" id="modal-event-name" class="text-input" readonly>
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="modal-email">Email</label>
+            <input type="text" id="modal-email" class="text-input" readonly>
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="modal-first-name">First Name</label>
+            <input type="text" id="modal-first-name" class="text-input" readonly>
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="modal-last-name">Last Name</label>
+            <input type="text" id="modal-last-name" class="text-input" readonly>
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="modal-event-day">Event Day</label>
+            <input type="text" id="modal-event-day" class="text-input" readonly>
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="modal-week-day">Week Day</label>
+            <input type="text" id="modal-week-day" class="text-input" readonly>
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="modal-event-month">Event Month</label>
+            <input type="text" id="modal-event-month" class="text-input" readonly>
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="modal-event-time">Event Time</label>
+            <input type="text" id="modal-event-time" class="text-input" readonly>
+          </div>
+        </div>
+
+        <!-- Hidden fields -->
+        <input type="hidden" id="modal-event-id">
+        <input type="hidden" id="modal-event-status">
+
+        <!-- Template selector (shown for pending events) -->
+        <div id="modal-template-group" class="form-group full-width" style="display: none; margin-top: 20px;">
+          <label class="field-label" for="modal-template-select">📄 Email Template</label>
+          <select id="modal-template-select" class="select-input"></select>
+        </div>
+
+        <!-- Email Preview -->
+        <div class="email-preview-section">
+          <h3>Email Preview</h3>
+          <div id="email-preview" class="email-preview"></div>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div id="modal-actions" class="modal-actions">
+        <button id="modal-schedule-btn" class="btn btn-primary">📅 Schedule Email</button>
+        <button id="modal-send-now-btn" class="btn btn-success">✉️ Send Now</button>
+        <button id="modal-cancel-email-btn" class="btn btn-danger">❌ Cancel Email</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- CONFIRMATION MODAL                          -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div id="confirm-modal" class="modal-overlay" hidden>
+    <div class="modal-card modal-card-sm">
+      <div class="modal-body">
+        <p id="confirm-modal-message" class="confirm-message"></p>
+      </div>
+      <div class="modal-actions">
+        <button id="confirm-modal-confirm-btn" class="btn btn-primary">Confirm</button>
+        <button id="confirm-modal-cancel-btn" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- TOAST CONTAINER                             -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SCRIPTS                                     -->
+  <!-- ═══════════════════════════════════════════ -->
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/modal.js"></script>
+  <script src="/js/templates.js"></script>
+  <script src="/js/signatures.js"></script>
+
+</body>
+</html>
