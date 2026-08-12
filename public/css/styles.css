@@ -141,6 +141,13 @@ ul, ol {
   filter: drop-shadow(0 0 8px rgba(0, 123, 255, 0.4));
 }
 
+.sidebar-logo img.logo-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px rgba(0, 123, 255, 0.4));
+}
+
 .sidebar-logo span,
 .sidebar-logo .logo-text {
   font-size: 1.5rem;
