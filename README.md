@@ -1,37 +1,121 @@
-# Hermes Dashboard — Walkthrough
+<div align="center">
 
-## Overview
+<img src="Hermes-Logo.png" alt="Hermes Logo" width="150" />
 
-The Hermes Dashboard is a local web application that connects to your **Google account** (OAuth 2.0), fetches events from Google Calendar, parses participant data, and manages automated reminder emails through a dark-mode dashboard UI.
+# Hermes Dashboard
 
-**Key architecture decisions**:
+**Google Calendar Email Automation Dashboard** — a local web app that turns calendar events into automatic reminder emails.
 
-- Emails are scheduled through **Google Sheets + Apps Script** so they send even when your PC is off. The local server writes scheduled jobs to a Google Sheet, and a time-driven Apps Script reads the Sheet and sends emails via `GmailApp`.
-- **Every sent email is registered on the Google Sheet** — both scheduled emails (sent by Apps Script) and emails sent immediately from the dashboard (sent via the Gmail API) become rows on the Sheet. The Sheet is therefore a complete history of every email the system ever sent.
-- **The local database is kept in sync by comparing the Calendar with the Sheet** — on every launch and every sync, calendar events are reconciled against the Sheet's records (e.g. an event the Sheet says was sent is marked `sent` in the DB, even if a stale calendar sync had it as `pending`/`past`/`canceled`).
-- **Authentication persists across launches** — after the first "Connect Google Account", the OAuth refresh token is saved to `.env`, so later launches reconnect automatically (no consent screen).
+</div>
+
+---
+
+## What is Hermes?
+
+Hermes is a self-hosted, dark-mode dashboard that connects to your **Google account** (OAuth 2.0) and automates email reminders for your calendar events. It fetches events from **Google Calendar**, parses the participant and event data from each event's description, and lets you either:
+
+- **Schedule** a reminder email that goes out **2 days before the event** — handled by **Google Apps Script**, so it fires even when your PC is off — or
+- **Send immediately** via the Gmail API.
+
+Emails are composed from fully editable **templates** and **signatures**, and every email the system ever sends is recorded on a **Google Sheet** that acts as the complete send history.
+
+## Features
+
+- **Google OAuth 2.0** — one-time "Connect Google Account" flow; the refresh token is persisted in `.env` so future launches reconnect silently (no consent screen).
+- **Automatic event sync** — events are fetched from Calendar on every launch, then every 5 minutes. Deleted events are detected and their scheduled emails are **automatically canceled** on the Sheet.
+- **Schedule emails** — reminder emails are written as jobs to a Google Sheet; a time-driven Apps Script picks them up at their `send_at` time and sends them via Gmail — **even when the app is closed**.
+- **Send Now** — sends instantly via the Gmail API and still registers the email on the Sheet as a `sent` row.
+- **Sent-status reconciliation** — the Sheet's `sent` rows are synced back into the local database every 2 minutes, so the dashboard always reflects emails sent while it was offline.
+- **Smart scheduling defaults** — emails go out 2 days before the event at a configurable global hour (default `20:00`), with a past-cutoff guard that suggests "Send Now" when the window has passed.
+- **Event detail modal** — live email preview rendered from the active template before you commit.
+- **Templates & Signatures** — full CRUD management, rich text editor for signatures, `{{first_name}}`, `{{event_name}}`, `{{event_day}}`, `{{event_time}}` and other placeholder variables.
+- **Cancellation handling** — deleting a calendar event cancels its pending job on the Sheet, and canceled events are surfaced in the dashboard with a badge counter.
+- **Pure JavaScript stack** — no native compilation needed (`sql.js` instead of `better-sqlite3`).
+
+---
+
+## Your Data & Privacy
+
+Hermes is a **local application** — it runs entirely on your machine, stores its data in a local SQLite file (`hermes.db`), and communicates only with Google's APIs on your behalf. There is no third party, no telemetry, and no external server in the loop.
+
+### What the app can access
+
+When you click **Connect Google Account**, you grant Hermes the following OAuth 2.0 scopes:
+
+| Scope | What it lets Hermes do |
+|-------|------------------------|
+| `calendar.readonly` | Read events from your Google Calendar (read-only — it can never create, edit, or delete events it does not own) |
+| `spreadsheets` | Read and write the email job/history spreadsheet you configured in `.env` |
+| `gmail.send` | Send emails on your behalf (send-only — it cannot read your inbox, drafts, or contacts) |
+| `userinfo.email` | Read the email address of the connected account, used for the dashboard header |
+
+### Where your data lives
+
+- **Local SQLite database** (`hermes.db`) — event records (name, participant name, email, datetime), templates, signatures, and settings. Never leaves your machine.
+- **Your Google Sheet** — every email job and every sent email is a row here. Columns: `event_id`, `to_email`, `subject`, `body`, `send_at`, `status`, `sent_at`. This is the bridge that lets Apps Script send emails while your PC is off.
+- **`.env` file** — stores your OAuth client credentials and the auto-generated refresh token, exactly like any standard OAuth app.
+
+### What you should know
+
+- Email bodies and subjects are stored **in plain text** in the Google Sheet and the local database, so anyone with access to either can read them.
+- The Apps Script code you paste into the Sheet (see Setup) has full Gmail **send** access to your account by design — that is the entire point of the offline scheduler. Review it before authorizing.
+- Your refresh token grants the app continued access until revoked. Use the **Disconnect Google Account** button in the dashboard to revoke access and wipe the token from `.env` when you no longer need the app.
+- Google's own data policies apply to anything processed by Calendar, Sheets, Gmail, and Apps Script.
+
+### About the Google Cloud Project
+
+A **Google Cloud Project** is the container Google requires to use its APIs with OAuth 2.0. In the Google Cloud Console you or an administrator:
+
+1. Create the project,
+2. Enable the **Calendar API**, **Sheets API**, and **Gmail API** for it,
+3. Create an **OAuth 2.0 Client ID** (Web application type) with the redirect URI `http://localhost:3000/auth/google/callback`.
+
+The project itself does not process or store your data — it is purely the identity/authorization layer. Hermes talks directly to the APIs; Google's consent screen shows exactly which scopes the project's client ID is requesting. **Keep the client ID and secret out of version control** (the included `.gitignore` already excludes `.env`).
+
+---
+
+## Architectural Decisions
+
+The design favors **Google infrastructure over local processes** for anything that must survive your PC being off:
+
+1. **Emails are scheduled through Google Sheets + Apps Script, not a local cron/timer.** A local scheduler dies with your machine; a time-driven Apps Script trigger on the Sheet doesn't. The local server's only job is to write `scheduled` jobs to the Sheet and let Apps Script do the sending at `send_at` time.
+
+2. **The Sheet is the single source of truth for email history.** Both paths — Apps Script sending scheduled jobs and the dashboard's "Send Now" — produce a row on the Sheet (`scheduled`/`sent`/`canceled`). The Sheet is therefore a complete, human-inspectable audit log of every email the system ever sent.
+
+3. **Calendar is reconciled against the Sheet on every launch and every sync.** Events are added/updated/canceled from Calendar, then any event the Sheet marks as `sent` is forced to `sent` in the local DB — even if a stale sync had it as `pending`/`past`/`canceled`. This catches up on emails sent by Apps Script while the app was closed, and avoids status ping-pong between the two syncs.
+
+4. **The Sheet data is pure ASCII to survive the round trip.** Email HTML is encoded to HTML numeric character entities (`toHtmlEntities`) before being written to cells, so accents and emoji survive Google Sheets → Apps Script → Gmail without corruption.
+
+5. **No native modules.** `sql.js` (a pure-JS SQLite) replaces `better-sqlite3`, keeping `npm install` free of Python/C++ build requirements on any platform.
+
+6. **OAuth tokens persist across launches.** The refresh token is written back into `.env` (carefully uncommenting the template placeholder line) so restarts authenticate automatically — and `Disconnect` revokes it server-side plus removes it from `.env`.
+
+7. **Watchful cancellation.** Calendar sync treats any active event that vanished from the calendar as deleted and, if an email was scheduled for it, cancels the matching Sheet row so Apps Script never sends an orphaned email.
 
 ---
 
 ## Project Structure
 
 ```
-Hermes-Mailer/
-├── server.js                  # Express entry point (async init, initial sync)
-├── package.json               # Dependencies (sql.js, no native builds)
-├── .env                       # Configuration (token auto-saved after first connect)
+Hermes/
+├── server.js                  # Express entry point (async init, OAuth routes, sync intervals)
+├── package.json               # Dependencies (dotenv, express, googleapis, open, sql.js)
+├── .env                       # Configuration (client ID/secret, calendar & sheet IDs, token auto-saved)
 ├── .gitignore                 # Ignores .env, node_modules, *.db
+├── Hermes-Logo.png            # Project logo
+├── hermes.db                  # Local SQLite database (auto-generated)
+├── scripts/                   # Helper scripts
 ├── src/
-│   ├── database.js            # SQLite via sql.js (pure JS, no native builds)
-│   ├── auth.js                # OAuth 2.0 (Calendar, Sheets, Gmail) + token persistence
-│   ├── calendar.js            # Google Calendar sync + event cancellation
-│   ├── sheets.js              # Google Sheets email jobs + sent-status sync
-│   ├── mailer.js              # Gmail API (Send Immediately)
-│   ├── scheduler.js           # Schedule / cancel / send-now orchestration
+│   ├── database.js            # SQLite schema + data access layer (sql.js, pure JS)
+│   ├── auth.js                # OAuth 2.0 (Calendar, Sheets, Gmail) + token persistence/revocation
+│   ├── calendar.js            # Google Calendar fetch, participant parsing, sync + cancellation
+│   ├── sheets.js              # Google Sheets job writer, cancelEmailJob, sent-status sync
+│   ├── mailer.js              # Gmail API sending, template rendering, UTF-8/HTML-entity handling
+│   ├── scheduler.js           # Schedule / cancel / send-now / send-time calculation
 │   └── routes.js              # All REST API endpoints
 └── public/
-    ├── index.html             # SPA shell with sidebar, tabs, modals
-    ├── css/styles.css         # Full dark design system
+    ├── index.html             # SPA shell (sidebar, tabs, modals)
+    ├── css/styles.css         # Dark design system
     └── js/
         ├── api.js             # Fetch-based API client
         ├── app.js             # Tab navigation, event cards, toasts, search, force sync
@@ -40,80 +124,45 @@ Hermes-Mailer/
         └── signatures.js      # Signature CRUD with rich text editor
 ```
 
----
-
-## Features
-
-### Pending events (upcoming)
-
-Each pending event card has a template dropdown and two quick actions:
-
-- **Schedule ⚡** (blue) — writes the email job to the Google Sheet; Apps Script sends it later.
-- **Send Now ✉️** (green) — sends immediately via the Gmail API **and registers the email on the Sheet** with status `sent`.
-
-Clicking the card opens the detail modal with a live email preview and the full Schedule / Send Now / Cancel actions.
-
-### Scheduling behavior
-
-- Scheduled emails go out **2 days before the event**, at the **global send hour** (default `20:00`).
-- The send hour is configurable in the **Settings tab → Scheduling** section (0–23).
-- The modal's past-cutoff alert uses the same configured hour.
-
-### Sync & up-to-date data
-
-- A **full sync runs on every app launch** (server-side after OAuth/startup, and again when the dashboard loads in the browser).
-- `/api/sync` compares **Calendar data against Sheet data**: calendar events are added/updated/canceled, then every event that the Sheet marks as `sent` is set to `sent` in the local DB — so the dashboard is always in sync with the latest changes, even for emails sent while the app was closed.
-- Calendar sync then repeats automatically every `SYNC_INTERVAL_MINUTES` (default 5), and sent-status sync every 2 minutes.
-- A **Force Sync** button on the sidebar triggers the full compare manually.
-
-### Sheets → Apps Script role
-
-- Rows written with status `scheduled` are picked up by Apps Script at their `send_at` time.
-- Rows written with status `sent` (Send Now from the dashboard) are **ignored by Apps Script** — they exist purely as the sent-email history used for the launch-time comparison.
-
----
-
-## Event Cancellation Flow
-
-> [!IMPORTANT]
-> When a Google Calendar event is deleted, and the email was already scheduled, the email is automatically canceled on the Google Sheet.
-
-The flow works as follows:
+## Flow: Scheduling & Sending
 
 ```mermaid
 graph TD
-    A["Calendar Sync Runs<br>(every 5 min)"] --> B["Fetch upcoming events<br>from Google Calendar"]
-    B --> C{"Event in DB but NOT<br>in fetched results?"}
-    C -->|No| D["Update or insert events"]
-    C -->|Yes| E{"Was status<br>'scheduled'?"}
-    E -->|No| F["Mark as 'canceled' in DB"]
-    E -->|Yes| G["Call sheets.cancelEmailJob()"]
-    G --> H["Update Sheet row status<br>to 'canceled'"]
-    H --> F
+    subgraph "Local App"
+        A["Calendar Sync<br>(launch + every 5 min)"] --> B["Google Calendar API"]
+        A --> C{"Event in DB but<br>not in Calendar?"}
+        C -->|No| D["Insert / update event"]
+        C -->|Yes| E{"Was it 'scheduled'?"}
+        E -->|Yes| F["Cancel Sheet job"]
+        E -->|No| G["Mark 'canceled' in DB"]
+        D --> H["Dashboard: pending event card"]
+    end
+
+    H --> I{"User action"}
+    I -->|"Schedule ⚡"| J["Write 'scheduled' row<br>to Google Sheet"]
+    I -->|"Send Now ✉️"| K["Gmail API send"]
+    K --> L["Write 'sent' row<br>to Google Sheet"]
+    I -->|"Cancel"| F
+
+    F --> M["Sheet row → 'canceled'"]
+    J --> N["Apps Script timer<br>(1 min trigger)"]
+    N --> O{"send_at reached?"}
+    O -->|Yes| P["Apps Script sends via GmailApp"]
+    P --> Q["Sheet row → 'sent'"]
+    Q --> R["Sent-status sync (every 2 min)<br>updates local DB → 'sent'"]
+    L --> R
 ```
 
-**Code locations**:
-- [calendar.js](./src/calendar.js) — Detects deleted events and cancels Sheet jobs
-- [sheets.js](./src/sheets.js) — `cancelEmailJob()` finds and updates the Sheet row
-- [scheduler.js](./src/scheduler.js) — Manual cancel from dashboard UI
+## Flow: Email Composition
 
----
-
-## Bugs Fixed During Review
-
-| Bug | File | Fix |
-|-----|------|-----|
-| API responses wrapped in `{events}`, `{templates}` etc. but JS accessed bare arrays | app.js, modal.js, templates.js, signatures.js | Added `data.events \|\| data` destructuring |
-| Google Calendar IDs are strings, not numbers — `onclick="handleFastSchedule(${id})"` broke | app.js | Switched to `addEventListener` with closure |
-| Badge polling used `stats.new_canceled_count` but API returns `stats.newCanceledCount` | app.js | Fixed key name |
-| Signature field name: DB uses `content`, JS used `body` | modal.js, signatures.js | Changed to `content` |
-| Apps Script called `UrlFetchApp.fetch(localhost)` — unreachable from Google servers | index.html | Rewrote to use `SpreadsheetApp` + `GmailApp` directly |
-| Email preview API: client sent POST, server expected GET | api.js | Changed to GET with URLSearchParams |
-| `better-sqlite3` requires Python/C++ for native compilation | package.json, database.js | Replaced with `sql.js` (pure JavaScript SQLite) |
-| `initDatabase()` became async (sql.js) but server called it synchronously | server.js | Wrapped in `async startServer()` |
-| Rich text toolbar buttons had `data-command` but no event handlers | signatures.js | Added click handlers for all toolbar commands |
-| Setup guide toggle replaced button `textContent`, losing the icon span | signatures.js | Fixed to toggle `hidden`/`active` and update icon only |
-| Refresh token was saved as a **commented line** in `.env` (matched the template's `# GOOGLE_REFRESH_TOKEN=` placeholder), so dotenv ignored it and the app asked to reconnect every launch | auth.js | `persistRefreshToken()` now strips the comment marker when replacing an existing token line |
+```mermaid
+graph LR
+    A["Active Template<br>(subject + body)"] --> B["Render placeholders<br>{{first_name}}, {{event_name}}, ..."]
+    B --> C["Append active signature"]
+    C --> D["HTML email"]
+    D --> E["HTML → ASCII entities<br>(toHtmlEntities)"]
+    E --> F["Write to Sheet cell"]
+```
 
 ---
 
@@ -148,7 +197,7 @@ PORT=3000
 SYNC_INTERVAL_MINUTES=5
 ```
 
-`GOOGLE_REFRESH_TOKEN` is **auto-generated** after the first connection — do not comment that line out (a commented placeholder is what used to force re-connecting every launch).
+`GOOGLE_REFRESH_TOKEN` is **auto-generated** after the first connection — do not comment that line out.
 
 ### 3. First run
 
@@ -174,3 +223,11 @@ Participant: FirstName LastName (email@example.com)
 ```
 
 The event title can use `Event Name - Extra Info` format (only the part before ` - ` is used as the event name).
+
+---
+
+## AI Disclosure
+
+This project was **entirely developed using AI assistance**. Initial development was done with **Claude Opus 4.6 (Thinking)** through **Google Antigravity**, and later development switched to **DeepSeek V4 Flash Free (max)** through **OpenCode**. The Hermes logo was generated with **Gemini 3.6 Flash**.
+
+All code, architecture decisions, and documentation were produced through these AI tools; human review and testing was performed by the project maintainer.
