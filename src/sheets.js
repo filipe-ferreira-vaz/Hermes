@@ -232,13 +232,16 @@ async function syncSentStatus(db) {
       const row = rows[i];
       const eventId = row[0];   // Column A: event_id
       const status = row[5];    // Column F: status
+      const sentAt = row[6];    // Column G: sent_at (actual send time)
 
       if (status === 'sent' && eventId) {
         const dbEvent = db.events.getById(eventId);
-        if (dbEvent && dbEvent.status !== 'sent') {
-          db.events.updateStatus(eventId, 'sent');
-          updatedCount++;
-          console.log(`[Sheets] Synced sent status for event ${eventId} (was: ${dbEvent.status})`);
+        if (dbEvent) {
+          if (dbEvent.status !== 'sent' || (sentAt && dbEvent.sent_at !== sentAt)) {
+            db.events.updateStatus(eventId, 'sent', sentAt || dbEvent.sent_at);
+            updatedCount++;
+            console.log(`[Sheets] Synced sent status for event ${eventId} (was: ${dbEvent.status}, sent at: ${sentAt || 'unknown'})`);
+          }
         }
       }
     }

@@ -20,6 +20,14 @@ async function initDatabase() {
   db.run('PRAGMA journal_mode = WAL');
   db.run('PRAGMA foreign_keys = ON');
 
+  // Migration: add sent_at column to existing databases
+  const eventCols = getAll("PRAGMA table_info(events)");
+  if (!eventCols.some((col) => col.name === 'sent_at')) {
+    db.run('ALTER TABLE events ADD COLUMN sent_at TEXT');
+    save();
+    console.log('[Database] Added sent_at column to events table');
+  }
+
   // Create tables
   db.run(`
     CREATE TABLE IF NOT EXISTS events (
@@ -39,6 +47,7 @@ async function initDatabase() {
       template_id INTEGER,
       signature_id INTEGER,
       scheduled_send_at TEXT,
+      sent_at TEXT,
       sheet_row INTEGER,
       created_at TEXT,
       updated_at TEXT
@@ -181,8 +190,8 @@ async function initDatabase() {
       run(
         `INSERT INTO events (id, event_name, first_name, last_name, email, event_datetime,
           event_day, week_day, event_month, event_time, status, email_subject, email_body,
-          template_id, signature_id, scheduled_send_at, sheet_row, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          template_id, signature_id, scheduled_send_at, sent_at, sheet_row, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           event.id,
           event.event_name || null,
@@ -200,6 +209,7 @@ async function initDatabase() {
           event.template_id || null,
           event.signature_id || null,
           event.scheduled_send_at || null,
+          event.sent_at || null,
           event.sheet_row || null,
           now,
           now
@@ -214,7 +224,7 @@ async function initDatabase() {
         'event_name', 'first_name', 'last_name', 'email', 'event_datetime',
         'event_day', 'week_day', 'event_month', 'event_time', 'status',
         'email_subject', 'email_body', 'template_id', 'signature_id',
-        'scheduled_send_at', 'sheet_row'
+        'scheduled_send_at', 'sent_at', 'sheet_row'
       ];
 
       const updates = [];
@@ -237,9 +247,13 @@ async function initDatabase() {
       return this.getById(id);
     },
 
-    updateStatus(id, status) {
+    updateStatus(id, status, sentAt) {
       const now = new Date().toISOString();
-      run('UPDATE events SET status = ?, updated_at = ? WHERE id = ?', [status, now, id]);
+      if (sentAt) {
+        run('UPDATE events SET status = ?, sent_at = ?, updated_at = ? WHERE id = ?', [status, sentAt, now, id]);
+      } else {
+        run('UPDATE events SET status = ?, updated_at = ? WHERE id = ?', [status, now, id]);
+      }
       return this.getById(id);
     },
 

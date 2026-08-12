@@ -215,8 +215,11 @@ document.addEventListener('DOMContentLoaded', () => {
       let extraLine = '';
       if (event.status === 'scheduled' && event.scheduled_send_at) {
         extraLine = `<div class="event-card-scheduled">📧 Scheduled for: ${formatDateTime(event.scheduled_send_at)}</div>`;
-      } else if (event.status === 'sent' && event.updated_at) {
-        extraLine = `<div class="event-card-sent">✅ Sent: ${formatDateTime(event.updated_at)}</div>`;
+      } else if (event.status === 'sent') {
+        const sentAt = event.sent_at || event.updated_at;
+        if (sentAt) {
+          extraLine = `<div class="event-card-sent">✅ Sent: ${formatDateTime(sentAt)}</div>`;
+        }
       }
 
       // Action buttons (fast schedule + template picker for pending)
@@ -355,7 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const data = await API.getEvents('sent');
       let events = data.events || data || [];
-      events.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+      events.sort((a, b) => new Date(b.sent_at || b.updated_at) - new Date(a.sent_at || a.updated_at));
       events = filterEventsBySearch(events, 'sent-search');
       renderEventList('sent-events', events);
     } catch (e) {

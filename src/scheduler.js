@@ -189,6 +189,7 @@ async function sendImmediately(eventId, db, sheets, mailer, templateId) {
   // Update DB
   db.events.update(eventId, {
     status: 'sent',
+    sent_at: nowIso,
     email_subject: renderedSubject,
     email_body: fullHtml,
     template_id: template.id,
