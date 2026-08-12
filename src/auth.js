@@ -1,6 +1,6 @@
 const { google } = require('googleapis');
 const fs = require('fs');
-const path = require('path');
+const paths = require('./paths');
 
 /**
  * OAuth 2.0 Authentication Module
@@ -142,7 +142,7 @@ function getEmail() {
  * @param {string} refreshToken
  */
 function persistRefreshToken(refreshToken) {
-  const envPath = path.join(process.cwd(), '.env');
+  const envPath = paths.envPath;
 
   try {
     let envContent = '';
@@ -217,7 +217,7 @@ async function revokeAccess() {
  * header) from the .env file so the app starts unauthenticated next time.
  */
 function removeRefreshTokenFromEnv() {
-  const envPath = path.join(process.cwd(), '.env');
+  const envPath = paths.envPath;
   try {
     if (!fs.existsSync(envPath)) return;
     let envContent = fs.readFileSync(envPath, 'utf-8');

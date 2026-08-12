@@ -10,6 +10,13 @@ node_modules/
 *.db-wal
 *.db-shm
 
+# Packaged executables
+dist/
+sql-wasm.wasm
+
+# Build tooling (local, not committed)
+ldid
+
 # Logs
 logs/
 

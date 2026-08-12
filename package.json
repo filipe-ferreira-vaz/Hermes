@@ -3,15 +3,29 @@
   "version": "1.0.0",
   "description": "Google Calendar Email Automation Dashboard",
   "main": "server.js",
+  "bin": {
+    "hermes": "server.js"
+  },
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "build": "node scripts/build-executables.js",
+    "install-desktop": "node scripts/install-linux-desktop.js"
   },
   "dependencies": {
     "dotenv": "^16.6.1",
     "express": "^4.21.0",
     "googleapis": "^144.0.0",
-    "open": "^10.1.0",
     "sql.js": "^1.11.0"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*",
+      "env.template",
+      "node_modules/sql.js/dist/sql-wasm.wasm"
+    ]
   }
 }

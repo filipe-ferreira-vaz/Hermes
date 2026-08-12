@@ -1,11 +1,22 @@
 const initSqlJs = require('sql.js');
-const path = require('path');
 const fs = require('fs');
+const paths = require('./paths');
 
-const DB_PATH = path.join(__dirname, '..', 'hermes.db');
+const DB_PATH = paths.dbPath;
 
 async function initDatabase() {
-  const SQL = await initSqlJs();
+  // sql.js needs its sql-wasm.wasm file at runtime. In dev it lives in
+  // node_modules; when packaged it's extracted from the snapshot to the
+  // writable base dir on first run (the snapshot itself is read-only).
+  let wasmPath = paths.sqlWasmDevPath;
+  if (paths.IS_PACKAGED) {
+    if (!fs.existsSync(paths.sqlWasmCachePath)) {
+      fs.copyFileSync(paths.sqlWasmDevPath, paths.sqlWasmCachePath);
+    }
+    wasmPath = paths.sqlWasmCachePath;
+  }
+
+  const SQL = await initSqlJs({ locateFile: () => wasmPath });
   let db;
 
   // Load existing database file or create new
@@ -21,8 +32,10 @@ async function initDatabase() {
   db.run('PRAGMA foreign_keys = ON');
 
   // Migration: add sent_at column to existing databases
+  // (guard: on a fresh DB the events table doesn't exist yet — PRAGMA
+  // table_info returns no rows — so skip the ALTER until CREATE TABLE runs)
   const eventCols = getAll("PRAGMA table_info(events)");
-  if (!eventCols.some((col) => col.name === 'sent_at')) {
+  if (eventCols.length > 0 && !eventCols.some((col) => col.name === 'sent_at')) {
     db.run('ALTER TABLE events ADD COLUMN sent_at TEXT');
     save();
     console.log('[Database] Added sent_at column to events table');

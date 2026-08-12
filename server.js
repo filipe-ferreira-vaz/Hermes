@@ -1,7 +1,17 @@
-require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const paths = require('./src/paths');
+
+require('dotenv').config({ path: paths.envPath });
+
+// First run (or fresh download): create .env from the template so a
+// double-clicked executable asks nicely instead of crashing.
+if (!fs.existsSync(paths.envPath) && fs.existsSync(paths.envTemplatePath)) {
+  fs.copyFileSync(paths.envTemplatePath, paths.envPath);
+  console.log('[Server] No .env found — created one from env.template. Fill it in and restart.');
+}
 
 const express = require('express');
-const path = require('path');
 const { initDatabase } = require('./src/database');
 const calendar = require('./src/calendar');
 const sheets = require('./src/sheets');
@@ -20,7 +30,7 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true }));
 
   // Serve static files from public/
-  app.use(express.static(path.join(__dirname, 'public')));
+  app.use(express.static(paths.publicDir));
 
   // Initialize database (async with sql.js)
   const db = await initDatabase();
@@ -99,7 +109,7 @@ async function startServer() {
   // Fallback: serve index.html for non-API routes (SPA support)
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api')) {
-      res.sendFile(path.join(__dirname, 'public', 'index.html'));
+      res.sendFile(path.join(paths.publicDir, 'index.html'));
     }
   });
 
@@ -131,13 +141,9 @@ async function startServer() {
   app.listen(PORT, async () => {
     console.log(`To open the dashboard, press CTRL + this link: http://localhost:${PORT}`);
 
-    // Auto-open browser
-    try {
-      const open = await import('open');
-      open.default(`http://localhost:${PORT}`);
-    } catch (err) {
-      // open module not critical
-    }
+    // Auto-open browser (direct system opener — robust under pkg/ESM)
+    const { openBrowser } = require('./src/opener');
+    openBrowser(`http://localhost:${PORT}`);
 
     // Try to initialize auth from existing refresh token
     const authenticated = await auth.initAuth();

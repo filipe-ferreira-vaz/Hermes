@@ -99,12 +99,16 @@ The design favors **Google infrastructure over local processes** for anything th
 ```
 Hermes/
 ├── server.js                  # Express entry point (async init, OAuth routes, sync intervals)
-├── package.json               # Dependencies (dotenv, express, googleapis, open, sql.js)
+├── package.json               # Dependencies (dotenv, express, googleapis, sql.js, pkg)
 ├── .env                       # Configuration (client ID/secret, calendar & sheet IDs, token auto-saved)
-├── .gitignore                 # Ignores .env, node_modules, *.db
+├── env.template               # Fresh configuration template (auto-copied to .env on first run)
+├── .gitignore                 # Ignores .env, node_modules, *.db, dist/, ldid
 ├── Hermes-Logo.png            # Project logo
 ├── hermes.db                  # Local SQLite database (auto-generated)
-├── scripts/                   # Helper scripts
+├── scripts/
+│   ├── build-executables.js      # Cross-compiles all platform executables into dist/
+│   └── install-linux-desktop.js  # Installs the Fedora/Linux app-grid shortcut
+├── dist/                      # Built executables (Linux, Windows .exe, macOS .app bundles)
 ├── src/
 │   ├── database.js            # SQLite schema + data access layer (sql.js, pure JS)
 │   ├── auth.js                # OAuth 2.0 (Calendar, Sheets, Gmail) + token persistence/revocation
@@ -112,6 +116,7 @@ Hermes/
 │   ├── sheets.js              # Google Sheets job writer, cancelEmailJob, sent-status sync
 │   ├── mailer.js              # Gmail API sending, template rendering, UTF-8/HTML-entity handling
 │   ├── scheduler.js           # Schedule / cancel / send-now / send-time calculation
+│   ├── paths.js               # Portable path resolution (repo vs packaged executables)
 │   └── routes.js              # All REST API endpoints
 └── public/
     ├── index.html             # SPA shell (sidebar, tabs, modals)
@@ -163,6 +168,53 @@ graph LR
     D --> E["HTML → ASCII entities<br>(toHtmlEntities)"]
     E --> F["Write to Sheet cell"]
 ```
+
+---
+
+## One-Click Executables
+
+Hermes ships as **standalone executables** for Fedora/Linux, Windows and macOS — the Node.js runtime, all code, and the dashboard frontend are embedded into a single binary. **No Node.js installation is needed.** Users only open the file; the server starts, the browser opens the dashboard, and a `.env` file is auto-created next to the binary on first run.
+
+### Files in `dist/` (built with `npm run build`)
+
+| File | OS | How to run |
+|------|----|------------|
+| `hermes-dashboard-linux-x64` | Fedora / any Linux x86_64 | Double-click, or run `./hermes-dashboard-linux-x64` |
+| `hermes-dashboard-win-x64.exe` | Windows 64-bit | Double-click the .exe |
+| `Hermes-dashboard-macos-x64.app` | macOS Intel | Double-click, then drag into **/Applications** |
+| `Hermes-dashboard-macos-arm64.app` | macOS Apple Silicon | Double-click, then drag into **/Applications** |
+
+### Portable behavior
+
+The executable is **fully portable**: `.env`, `hermes.db`, and `sql-wasm.wasm` are created in the same folder as the binary (put it in a writable folder, e.g. `~/Hermes` or the Desktop). Configuration is identical to the repo version — fill `.env` with your Google credentials and restart.
+
+### Adding the OS app shortcut
+
+- **Fedora / GNOME** — from the repo:
+
+  ```bash
+  npm run build
+  npm run install-desktop
+  ```
+
+  The app then appears in the Activities overview and can be pinned to the dock. (Manually: the build also writes `dist/hermes.desktop` — copy it to `~/.local/share/applications/` and the logo to `~/.local/share/icons/`.)
+- **Windows** — right-click `hermes-dashboard-win-x64.exe` → **Pin to taskbar**, or create a shortcut on the Desktop / Start Menu.
+- **macOS** — drag the `.app` bundle into **/Applications**; it appears in Launchpad and Spotlight automatically.
+
+### Platform notes
+
+- **macOS Gatekeeper**: binaries built on Linux are ad-hoc signed (`ldid`) but not notarized. The first launch may require **right-click → Open** instead of a plain double-click.
+- **Windows SmartScreen**: unsigned exes may warn "Unknown publisher" — click **More info → Run anyway**.
+- Don't move a binary after first run, or copy the `.env`/`hermes.db` files along with it.
+
+### Rebuilding
+
+```bash
+npm install          # includes devDependency pkg
+npm run build        # cross-compiles all 4 executables into ./dist
+```
+
+The build script (`scripts/build-executables.js`) invokes `pkg` for `node18-linux-x64`, `node18-win-x64`, `node18-macos-x64` and `node18-macos-arm64`, then wraps the macOS binaries into `.app` bundles (ad-hoc signing applied when `ldid` is available).
 
 ---
 
