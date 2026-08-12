@@ -294,6 +294,22 @@
 
       </div><!-- /settings-grid -->
 
+      <!-- ── Google Account Section ── -->
+      <div class="settings-card settings-card-compact">
+        <div class="settings-card-header">
+          <h2>Google Account</h2>
+        </div>
+
+        <div class="settings-card-body">
+          <p class="settings-hint" id="google-account-info">Not connected.</p>
+          <div class="settings-row">
+            <a href="/auth/google" class="btn btn-sm btn-primary" id="google-connect-btn">Connect Google Account</a>
+            <button id="disconnect-btn" class="btn btn-sm btn-danger" hidden>Disconnect Account</button>
+          </div>
+          <p id="disconnect-status" class="settings-status" hidden></p>
+        </div>
+      </div>
+
       <!-- ── Scheduling Section ── -->
       <div class="settings-card settings-card-compact">
         <div class="settings-card-header">

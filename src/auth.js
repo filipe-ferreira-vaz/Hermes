@@ -178,6 +178,60 @@ function persistRefreshToken(refreshToken) {
 }
 
 /**
+ * Disconnect the Google account: revoke tokens with Google (best-effort),
+ * clear in-memory state, and remove the refresh token from the .env file.
+ * @returns {Promise<void>}
+ */
+async function revokeAccess() {
+  const client = getOAuth2Client();
+
+  // Attempt to revoke the refresh token with Google (best-effort — failure
+  // here must not block the user from disconnecting).
+  const refreshToken = client.credentials && client.credentials.refresh_token;
+  if (refreshToken) {
+    try {
+      const response = await fetch(
+        `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(refreshToken)}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      );
+      if (!response.ok) {
+        console.warn(`[Auth] Token revocation returned status ${response.status}`);
+      }
+    } catch (err) {
+      console.warn('[Auth] Token revocation failed:', err.message);
+    }
+  }
+
+  // Clear in-memory credentials. NOTE: do NOT use client.revokeCredentials()
+  // here — it throws when no access_token is present (only a refresh token
+  // from .env) and would crash the server via an unhandled rejection.
+  client.credentials = {};
+  authenticatedEmail = null;
+  oAuth2Client = null;
+
+  removeRefreshTokenFromEnv();
+}
+
+/**
+ * Remove the GOOGLE_REFRESH_TOKEN entry (and its auto-generated comment
+ * header) from the .env file so the app starts unauthenticated next time.
+ */
+function removeRefreshTokenFromEnv() {
+  const envPath = path.join(process.cwd(), '.env');
+  try {
+    if (!fs.existsSync(envPath)) return;
+    let envContent = fs.readFileSync(envPath, 'utf-8');
+    envContent = envContent.replace(/^[ \t]*(?:#|;)?[ \t]*GOOGLE_REFRESH_TOKEN=.*\n?/gm, '');
+    envContent = envContent.replace(/^# --- OAuth Refresh Token \(auto-generated\) ---\n?/gm, '');
+    fs.writeFileSync(envPath, envContent, 'utf-8');
+    delete process.env.GOOGLE_REFRESH_TOKEN;
+    console.log('[Auth] Refresh token removed from .env');
+  } catch (err) {
+    console.error('[Auth] Failed to remove refresh token from .env:', err.message);
+  }
+}
+
+/**
  * Initialize auth on startup — if refresh token exists, verify it works.
  */
 async function initAuth() {
@@ -200,5 +254,6 @@ module.exports = {
   isAuthenticated,
   getEmail,
   initAuth,
+  revokeAccess,
   SCOPES,
 };

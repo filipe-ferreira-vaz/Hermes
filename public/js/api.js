@@ -47,6 +47,10 @@ const API = {
     return this._request('/api/auth/status');
   },
 
+  async disconnectGoogle() {
+    return this._request('/api/auth/disconnect', { method: 'POST' });
+  },
+
   // ── Events ──────────────────────────────────────────────────────────────
 
   async getEvents(status, days = null) {

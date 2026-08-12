@@ -142,8 +142,8 @@ ul, ol {
 }
 
 .sidebar-logo img.logo-icon {
-  width: 40px;
-  height: 40px;
+  width: 50px;
+  height: 50px;
   object-fit: contain;
   filter: drop-shadow(0 0 8px rgba(0, 123, 255, 0.4));
 }
@@ -248,6 +248,14 @@ ul, ol {
   min-height: 100vh;
   padding: 0;
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.content-header {
+  padding: 28px 32px 0;
+}
+
+.auth-banner {
+  margin: 28px 0 24px 32px;
 }
 
 /* ------------------------------------------------------------
@@ -1630,6 +1638,18 @@ ul, ol {
     padding: 20px 16px;
   }
 
+  .content-header {
+    padding: 20px 16px 0;
+  }
+
+  .auth-banner {
+    margin: 20px 0 24px 16px;
+  }
+
+  .auth-status {
+    margin: 0 0 16px 16px;
+  }
+
   .modal-form-grid {
     grid-template-columns: 1fr;
   }
@@ -2235,10 +2255,6 @@ ul, ol {
 }
 
 /* ─── Auth Banner ─── */
-.auth-banner {
-  margin: 0 0 24px 0;
-}
-
 .auth-banner-content {
   display: flex;
   align-items: center;
@@ -2280,6 +2296,7 @@ ul, ol {
 
 /* ─── Auth Status Badge ─── */
 .auth-status {
+  margin: 0 0 16px 32px;
   padding: 10px 20px;
   font-size: 0.85rem;
   color: var(--success);

@@ -79,6 +79,19 @@ async function startServer() {
     });
   });
 
+  /**
+   * POST /api/auth/disconnect — Disconnect the Google account
+   */
+  app.post('/api/auth/disconnect', async (req, res) => {
+    try {
+      await auth.revokeAccess();
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[Auth] Disconnect error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Mount API routes
   const router = createRouter({ db, sheets, mailer, scheduler, calendar });
   app.use(router);

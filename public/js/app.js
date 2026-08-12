@@ -501,6 +501,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const banner = document.getElementById('auth-banner');
       const authStatus = document.getElementById('auth-status');
       const authEmail = document.getElementById('auth-email');
+      const accountInfo = document.getElementById('google-account-info');
+      const connectBtn = document.getElementById('google-connect-btn');
+      const disconnectBtn = document.getElementById('disconnect-btn');
 
       if (status.authenticated) {
         if (banner) banner.hidden = true;
@@ -510,16 +513,37 @@ document.addEventListener('DOMContentLoaded', () => {
           // Auto-hide after 5 seconds
           setTimeout(() => { authStatus.hidden = true; }, 5000);
         }
+        if (accountInfo) accountInfo.textContent = `Connected as ${status.email || 'your account'}`;
+        if (connectBtn) connectBtn.hidden = true;
+        if (disconnectBtn) disconnectBtn.hidden = false;
         return true;
       } else {
         if (banner) banner.hidden = false;
         if (authStatus) authStatus.hidden = true;
+        if (accountInfo) accountInfo.textContent = 'Not connected.';
+        if (connectBtn) connectBtn.hidden = false;
+        if (disconnectBtn) disconnectBtn.hidden = true;
         return false;
       }
     } catch (e) {
       console.error('Auth check failed:', e);
       return false;
     }
+  }
+
+  // ── Disconnect Google Account ──────────────────────────────────────────
+  const disconnectBtn = document.getElementById('disconnect-btn');
+  if (disconnectBtn) {
+    disconnectBtn.addEventListener('click', () => {
+      openConfirmModal('Disconnect your Google account? Syncing and email sending will stop, but your local data will be kept. Are you sure?', async () => {
+        try {
+          await API.disconnectGoogle();
+          closeConfirmModal();
+          showToast('Google account disconnected', 'info');
+          setTimeout(() => window.location.reload(), 1000);
+        } catch (e) { console.error(e); }
+      });
+    });
   }
 
   // ── Initial Load ─────────────────────────────────────────────────────
