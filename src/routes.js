@@ -315,6 +315,7 @@ function createRouter({ db, sheets, mailer, scheduler, calendar }) {
   router.post('/api/sync', async (req, res) => {
     try {
       const calendarResult = await calendar.syncEvents(db, sheets);
+      await sheets.syncScheduledStatus(db);
       await sheets.syncSentStatus(db);
       res.json({ calendar: calendarResult, sentStatusSynced: true });
     } catch (err) {

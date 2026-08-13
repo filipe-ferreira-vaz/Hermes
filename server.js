@@ -127,10 +127,13 @@ async function startServer() {
     }
   }, SYNC_INTERVAL);
 
-  // Sheet sent-status sync interval (every 2 minutes, only if authenticated)
+  // Sheet status sync interval (every 2 minutes, only if authenticated):
+  // pull scheduled/sent states from the Sheet so the Dashboard always
+  // reflects what Apps Script will actually send.
   setInterval(async () => {
     if (!auth.isAuthenticated()) return;
     try {
+      await sheets.syncScheduledStatus(db);
       await sheets.syncSentStatus(db);
     } catch (err) {
       console.error('[Sync] Sheet status sync failed:', err.message);
@@ -174,13 +177,15 @@ async function startServer() {
       console.error('[Sync] Initial sync failed:', err.message);
     }
 
-    // Catch up on emails sent by Apps Script while the app was offline
-    // (their Sheet rows are marked 'sent', the local DB must catch that too)
+    // Catch up on emails scheduled/sent by Apps Script while the app was
+    // offline (their Sheet rows are marked 'scheduled'/'sent', the local DB
+    // must catch that too)
     try {
+      await sheets.syncScheduledStatus(db);
       await sheets.syncSentStatus(db);
-      console.log('[Server] Initial sheet sent-status sync complete');
+      console.log('[Server] Initial sheet status sync complete');
     } catch (err) {
-      console.error('[Server] Initial sheet sent-status sync failed:', err.message);
+      console.error('[Server] Initial sheet status sync failed:', err.message);
     }
   }
 

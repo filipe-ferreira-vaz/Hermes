@@ -46,6 +46,23 @@ function toHtmlEntities(value) {
 }
 
 /**
+ * Inverse of toHtmlEntities — decode HTML numeric character references
+ * (e.g. "&#x1f4cd;" -> "📍", "&#xe9;" -> "é") back into Unicode.
+ * @param {string} value - ASCII-encoded string
+ * @returns {string} Decoded string (or original if not a string)
+ */
+function decodeHtmlEntities(value) {
+  if (typeof value !== 'string') return value;
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (m, hex) => {
+      try { return String.fromCodePoint(parseInt(hex, 16)); } catch { return m; }
+    })
+    .replace(/&#(\d+);/g, (m, dec) => {
+      try { return String.fromCodePoint(parseInt(dec, 10)); } catch { return m; }
+    });
+}
+
+/**
  * Encode a header value containing non-ASCII characters using RFC 2047.
  * Any mojibake (double-encoded UTF-8) is repaired before encoding.
  * @param {string} value - Header value to encode
@@ -157,5 +174,6 @@ module.exports = {
   buildEmailHtml,
   encodeHeader,
   normalizeUtf8,
-  toHtmlEntities
+  toHtmlEntities,
+  decodeHtmlEntities
 };

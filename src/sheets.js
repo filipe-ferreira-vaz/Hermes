@@ -1,7 +1,7 @@
 const { google } = require('googleapis');
 
 const { getAuthClient } = require('./auth');
-const { toHtmlEntities } = require('./mailer');
+const { toHtmlEntities, decodeHtmlEntities, normalizeUtf8 } = require('./mailer');
 
 let cachedSheetName = null;
 
@@ -256,6 +256,95 @@ async function syncSentStatus(db) {
 }
 
 /**
+ * Sync scheduled status from Google Sheet back to the local database.
+ * This is the counterpart of syncSentStatus for rows still marked
+ * 'scheduled'. When emails are scheduled from the Sheet (e.g. the DB was
+ * reset/recreated, another instance scheduled them, or an event was
+ * scheduled while the app was offline), this function promotes the
+ * matching DB events to 'scheduled' and fills in the subject, body, send
+ * time and sheet row from the Sheet — so the Scheduled tab always shows
+ * everything that will actually be sent by Apps Script.
+ * Events already 'sent' in the DB are never downgraded back.
+ * @param {object} db - Database operations object
+ * @returns {Promise<number>} Number of DB events updated
+ */
+async function syncScheduledStatus(db) {
+  try {
+    const sheets = getSheetsApi();
+    const r = await range('A:G');
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID(),
+      range: r,
+    });
+
+    const rows = response.data.values || [];
+    let updatedCount = 0;
+
+    // Keep only the most recent scheduled row per event, so an older
+    // schedule doesn't overwrite a newer one.
+    const scheduledRows = {};
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const eventId = row[0];   // Column A: event_id
+      const status = row[5];    // Column F: status
+
+      if (status === 'scheduled' && eventId) {
+        const sendAt = row[4] || ''; // Column E: send_at
+        const existing = scheduledRows[eventId];
+        if (!existing || (sendAt && new Date(sendAt) > new Date(existing.sendAt))) {
+          scheduledRows[eventId] = {
+            eventId,
+            email: row[1] || '',               // Column B: to_email
+            subject: normalizeUtf8(row[2] || ''), // Column C: subject
+            body: decodeHtmlEntities(row[3] || ''), // Column D: body (HTML entities)
+            sendAt,
+            rowNumber: i + 1,
+          };
+        }
+      }
+    }
+
+    for (const entry of Object.values(scheduledRows)) {
+      const dbEvent = db.events.getById(entry.eventId);
+      if (!dbEvent) {
+        console.log(`[Sheets] Scheduled row for unknown event ${entry.eventId} — will appear after next calendar sync`);
+        continue;
+      }
+      // Sent is final — never downgrade a delivered email back to scheduled.
+      if (dbEvent.status === 'sent') continue;
+
+      const changed =
+        dbEvent.status !== 'scheduled' ||
+        dbEvent.scheduled_send_at !== entry.sendAt ||
+        dbEvent.sheet_row !== entry.rowNumber ||
+        dbEvent.email_subject !== entry.subject;
+
+      if (changed) {
+        db.events.update(entry.eventId, {
+          status: 'scheduled',
+          email: entry.email || dbEvent.email,
+          email_subject: entry.subject,
+          email_body: entry.body,
+          scheduled_send_at: entry.sendAt,
+          sheet_row: entry.rowNumber,
+        });
+        updatedCount++;
+        console.log(`[Sheets] Synced scheduled status for event ${entry.eventId} (was: ${dbEvent.status}, send at: ${entry.sendAt})`);
+      }
+    }
+
+    if (updatedCount > 0) {
+      console.log(`[Sheets] Synced ${updatedCount} scheduled status updates from Sheet`);
+    }
+    return updatedCount;
+  } catch (err) {
+    console.error('[Sheets] Error syncing scheduled status:', err.message);
+    throw err;
+  }
+}
+
+/**
  * Clear all data rows from the Google Sheet (keep headers).
  * Used during database reset.
  */
@@ -282,5 +371,6 @@ module.exports = {
   writeEmailJob,
   cancelEmailJob,
   syncSentStatus,
+  syncScheduledStatus,
   clearAllJobs
 };
